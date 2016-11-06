@@ -110,20 +110,15 @@ class WatchDog(object):
         except Exception as err:
             logger.error(err, exc_info=True)
 
-    def try_restart_app(self, app, time_before):
+    def try_restart_app(self, app):
         try:
             if app["state"] != APPState.running:
                 return
-            import pdb; pdb.set_trace()
-            last_operated_at = datetime.strptime(
-                app["last_operated_at"], "%Y-%m-%dT%H:%M:%S+00:00",
+            response = self.session.post(
+                "https://openapi.daocloud.io/v1/apps/{app_id}/actions/restart".format(
+                    app_id=app["id"],
+                ), headers=self.request_headers,
             )
-            if last_operated_at < time_before:
-                response = self.session.post(
-                    "https://openapi.daocloud.io/v1/apps/{app_id}/actions/restart".format(
-                        app_id=app["id"],
-                    ), headers=self.request_headers,
-                )
             result = response.json()
             logger.info("restart app[%s]: %s", app["name"], result["action_id"])
         except Exception as err:
@@ -132,23 +127,28 @@ class WatchDog(object):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("action")
     parser.add_argument("access_token")
     parser.add_argument("-a", "--apps", nargs="+")
-    parser.add_argument("-t", "--ttl", type=int, default=0)
     args = parser.parse_args()
 
     dog = WatchDog(args.access_token, args.apps)
+    actions = {
+        "start": dog.try_start_app,
+        "restart": dog.try_restart_app,
+        "status": dog.log_app_info,
+    }
+    action = actions.get(args.action)
+    if not action:
+        return
+
     for app in dog.gen_apps():
         app_name = app["name"]
         if args.apps and app_name not in args.apps:
             continue
 
         logger.info("check app[%s]", app_name)
-        dog.log_app_info(app)
-        dog.try_start_app(app)
-        if args.ttl:
-            time_before = datetime.utcnow() - timedelta(minutes=args.ttl)
-            dog.try_restart_app(app, time_before)
+        action(app)
 
 
 if __name__ == "__main__":
