@@ -68,6 +68,7 @@ class Session(object):
 
 class APPState(object):
     running = "running"
+    starting = "starting"
     stoped = "stopped"
     pending = "pending"
 
@@ -84,6 +85,7 @@ class WatchDog(object):
         response = self.session.get(
             "https://openapi.daocloud.io/v1/apps",
             headers=self.request_headers,
+            verify=False,
         )
         result = response.json()
         for app in result["app"]:
@@ -103,7 +105,9 @@ class WatchDog(object):
             response = self.session.post(
                 "https://openapi.daocloud.io/v1/apps/{app_id}/actions/start".format(
                     app_id=app["id"],
-                ), headers=self.request_headers,
+                ),
+                headers=self.request_headers,
+                verify=False,
             )
             result = response.json()
             logger.info("start app[%s]: %s", app["name"], result["action_id"])
@@ -117,7 +121,9 @@ class WatchDog(object):
             response = self.session.post(
                 "https://openapi.daocloud.io/v1/apps/{app_id}/actions/restart".format(
                     app_id=app["id"],
-                ), headers=self.request_headers,
+                ),
+                headers=self.request_headers,
+                verify=False,
             )
             result = response.json()
             logger.info("restart app[%s]: %s", app["name"], result["action_id"])
