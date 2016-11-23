@@ -28,6 +28,9 @@ class Response(object):
     def json(self):
         return jsonlib.loads(self.content)
 
+    def __getattr__(self, name):
+        return getattr(self.raw_response, name)
+
 
 class Session(object):
 
@@ -99,7 +102,6 @@ class WatchDog(object):
             response.headers.get("X-RateLimit-Remaining"),
             response.headers.get("X-RateLimit-Reset"),
         )
-        rate_limit = response.headers.get("X-RateLimit-Limit")
         result = response.json()
         for app in result["app"]:
             yield app
