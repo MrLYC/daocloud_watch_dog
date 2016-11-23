@@ -5,7 +5,6 @@ import urllib
 import urllib2
 import json as jsonlib
 import argparse
-from datetime import datetime, timedelta
 import sys
 import logging
 
@@ -32,8 +31,16 @@ class Response(object):
 
 class Session(object):
 
-    def __init__(self):
-        self.opener = urllib2.build_opener()
+    def __init__(self, no_verify=False):
+        if no_verify:
+            import ssl
+            self.opener = urllib2.build_opener(
+                urllib2.HTTPSHandler(
+                    context=ssl._create_unverified_context(),
+                )
+            )
+        else:
+            self.opener = urllib2.build_opener()
 
     def post(self, url, query=None, form=None, json=None, headers=None):
         headers = headers or {}
@@ -74,8 +81,8 @@ class APPState(object):
 
 
 class WatchDog(object):
-    def __init__(self, access_token, apps):
-        self.session = Session()
+    def __init__(self, access_token, apps, no_verify=False):
+        self.session = Session(no_verify)
         self.apps = apps
         self.request_headers = {
             "Authorization": "token %s" % access_token
@@ -85,8 +92,14 @@ class WatchDog(object):
         response = self.session.get(
             "https://openapi.daocloud.io/v1/apps",
             headers=self.request_headers,
-            verify=False,
         )
+        logger.info(
+            "apps api info: rate_limit=%s, limit_remaining=%s, reset=%s",
+            response.headers.get("X-RateLimit-Limit"),
+            response.headers.get("X-RateLimit-Remaining"),
+            response.headers.get("X-RateLimit-Reset"),
+        )
+        rate_limit = response.headers.get("X-RateLimit-Limit")
         result = response.json()
         for app in result["app"]:
             yield app
@@ -107,7 +120,12 @@ class WatchDog(object):
                     app_id=app["id"],
                 ),
                 headers=self.request_headers,
-                verify=False,
+            )
+            logger.info(
+                "apps api info: rate_limit=%s, limit_remaining=%s, reset=%s",
+                response.headers.get("X-RateLimit-Limit"),
+                response.headers.get("X-RateLimit-Remaining"),
+                response.headers.get("X-RateLimit-Reset"),
             )
             result = response.json()
             logger.info("start app[%s]: %s", app["name"], result["action_id"])
@@ -123,7 +141,12 @@ class WatchDog(object):
                     app_id=app["id"],
                 ),
                 headers=self.request_headers,
-                verify=False,
+            )
+            logger.info(
+                "apps api info: rate_limit=%s, limit_remaining=%s, reset=%s",
+                response.headers.get("X-RateLimit-Limit"),
+                response.headers.get("X-RateLimit-Remaining"),
+                response.headers.get("X-RateLimit-Reset"),
             )
             result = response.json()
             logger.info("restart app[%s]: %s", app["name"], result["action_id"])
@@ -136,9 +159,13 @@ def main():
     parser.add_argument("action")
     parser.add_argument("access_token")
     parser.add_argument("-a", "--apps", nargs="+")
+    parser.add_argument(
+        "--no-verify", default=False,
+        action="store_true",
+    )
     args = parser.parse_args()
 
-    dog = WatchDog(args.access_token, args.apps)
+    dog = WatchDog(args.access_token, args.apps, args.no_verify)
     actions = {
         "start": dog.try_start_app,
         "restart": dog.try_restart_app,
@@ -148,13 +175,19 @@ def main():
     if not action:
         return
 
-    for app in dog.gen_apps():
-        app_name = app["name"]
-        if args.apps and app_name not in args.apps:
-            continue
+    try:
+        for app in dog.gen_apps():
+            app_name = app["name"]
+            if args.apps and app_name not in args.apps:
+                continue
 
-        logger.info("check app[%s]", app_name)
-        action(app)
+            logger.info("check app[%s]", app_name)
+            action(app)
+    except urllib2.HTTPError as err:
+        logger.error(
+            "reason: %s %s, details: %s",
+            err.code, err.reason, err.read()
+        )
 
 
 if __name__ == "__main__":
