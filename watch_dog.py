@@ -81,6 +81,7 @@ class APPState(object):
     starting = "starting"
     stoped = "stopped"
     pending = "pending"
+    error = "not_running"
 
 
 class WatchDog(object):
@@ -115,7 +116,7 @@ class WatchDog(object):
 
     def try_start_app(self, app):
         try:
-            if app["state"] != APPState.stoped:
+            if app["state"] not in [APPState.stoped, APPState.error]:
                 return
             response = self.session.post(
                 "https://openapi.daocloud.io/v1/apps/{app_id}/actions/start".format(
